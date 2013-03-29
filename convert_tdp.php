@@ -141,7 +141,7 @@ try {
 	    																				replyID,
 	    																				department,
 	    																				fileName,
-	    																				fileSize,
+	    																				fileSize
 	    																			)
 	    																		VALUES (?,?,?,?,?,?)";
 					$values = array(
