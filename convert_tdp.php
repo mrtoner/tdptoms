@@ -1,13 +1,23 @@
 <?php
-/* TDP, like Maian Support, saves the server time -- not GMT. */
+/* At this time, the converter assumes the TDP and MS tables will 
+   belong in the same database. */
+define('DB','database');
+define('HOST','localhost');
+define('USER','user');
+define('PWD','password');
+define('TDP_PREFIX','tdp_');
+define('MS_PREFIX','msp_');
+define('TDP_ATTACH_PATH','/home/account/public_html/path/to/attachments/');
+
+/* Use this setting to correct any time differences.
+   Any offset must be in seconds */
 define('TIME_OFFSET', 0);
-define('STAMP_DATE', 'l, F j, Y | H:ia');
 
 try {
 	echo '<pre>';
-  $db = new PDO("mysql:dbname=DBNAME;host=HOST", "USER", "PASSWORD" );
+  $db = new PDO("mysql:dbname=". DB .";host=". HOST, USER, PWD, array(PDO::ATTR_ERRMODE => PDO::ERRMODE_WARNING) );
 
-  $sql = 'SELECT * FROM tdp_tickets ORDER BY ID';
+  $sql = 'SELECT * FROM '. TDP_PREFIX .'tickets ORDER BY ID';
 
   $new_ticket = array();
   /* Iterate over each TDP ticket */
@@ -16,48 +26,52 @@ try {
     $replies = getReplies($ticket['ticketid']);
     $priority = convertPriority($ticket['priority']);
     $createdDate = strtotime($ticket['ticketdate']) + TIME_OFFSET;
-    $ticketStamp = date(STAMP_DATE, $createdDate);
+    //$ticketStamp = date(STAMP_DATE, $createdDate);
     $replyStatus = count($replies) ? getLastReplier($ticket) : 'start';
     $status = convertStatus($ticket['status']);
-    $addDate = date('Y-m-d', $createdDate);
-    $addTime = date('G:i:s', $createdDate);
-    $lastUpdate = date('Y-m-d', strtotime(getLastReplyDate($replies)) + TIME_OFFSET);
+    //$addDate = date('Y-m-d', $createdDate);
+    //$addTime = date('G:i:s', $createdDate);
+    $lastUpdate = getLastReplyDate($replies) != 0 ? strtotime(getLastReplyDate($replies)) + TIME_OFFSET : $createdDate;
+    $comments = stripslashes($ticket['comments']);
+    $comments = filter_comments($comments);
     
-    $new_ticket = "INSERT INTO ms_tickets (
+    $new_ticket = "INSERT INTO ". MS_PREFIX ."tickets (
+                                            ts,
+                                            lastrevision,
     																				department,
+    																				assignedto,
     																				name,
     																				email,
     																				subject,
+    																				mailBodyFilter,
     																				comments,
     																				priority,
-    																				ticketStamp,
     																				replyStatus,
     																				ticketStatus,
-    																				addDate,
-    																				addTime,
     																				ipAddresses,
-    																				lastUpdate,
     																				isDisputed,
+    																				ticketNotes,
     																				tickLang,
     																				disPostPriv
     																			) 
-    																		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
+    																		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
 
     $values = array (
+    									$createdDate,
+    									$lastUpdate,
     									$department,
+    									'',
     									stripslashes($ticket['name']),
     									$ticket['email'],
     									stripslashes($ticket['subject']),
-    									stripslashes($ticket['comments']),
+    									'',
+    									$comments,
     									$priority,
-    									$ticketStamp,
     									$replyStatus,
     									$status,
-    									$addDate,
-    									$addTime,
     									$ticket['ip'],
-    									$lastUpdate,
     									'no',
+    									NULL,
     									'english',
     									'yes',
     								);
@@ -69,9 +83,9 @@ try {
 
     foreach ($replies as $reply) {
       $repliedDate = strtotime($reply['posttime']) + TIME_OFFSET;
-    	$replyDate = date('Y-m-d', $repliedDate);
-    	$replyTime = date('G:i:s', $repliedDate);
-    	$replyStamp = date(STAMP_DATE, $repliedDate);
+    	//$replyDate = date('Y-m-d', $repliedDate);
+    	//$replyTime = date('G:i:s', $repliedDate);
+    	//$replyStamp = date(STAMP_DATE, $repliedDate);
     	/* TDP has a bug (among many) that marks replies as 'admin' when merged.
     	   This will attempt to  fix that by marking all merged replies as 'visitor'.
     	   However, I really should compare the name on the reply to the list of users
@@ -83,23 +97,24 @@ try {
     	}
     	$replyType = $reply['adminreply'] ? 'admin' : 'visitor';
     	$replyUser = $reply['adminreply'] ? convertUser($reply['name']) : 0;
-    	$new_reply = "INSERT INTO ms_replies (
+    	$comments = stripslashes($reply['comments']);
+      $comments = filter_comments($comments);
+
+    	$new_reply = "INSERT INTO ". MS_PREFIX ."replies (
+    																				ts,
     																				ticketID,
     																				comments,
-    																				addDate,
-    																				addTime,
-    																				replyStamp,
+    																				mailBodyFilter,
     																				replyType,
     																				replyUser,
     																				isMerged
     																			)
-    																		VALUES (?,?,?,?,?,?,?,?)";
+    																		VALUES (?,?,?,?,?,?,?)";
       $values = array(
+                      $repliedDate,
                       $lastTicketID,
-                      stripslashes($reply['comments']),
-                      $replyDate,
-                      $replyTime,
-                      $replyStamp,
+                      $comments,
+                      '',
                       $replyType,
                       $replyUser,
                       $isMerged,
@@ -121,25 +136,25 @@ try {
 
         /* TDP only allows one attachment per ticket. */
     if ($ticket['attachstatus']) {
- 			$path = 'PATH' . $attachment['attachfile'];
+ 			$path = TDP_ATTACH_PATH . $attachment['attachfile'];
  			if (file_exists($path)) {
 	 			$filesize = filesize($path);
-	    	$new_attachment = "INSERT INTO ms_attachments (
+	    	$new_attachment = "INSERT INTO ". MS_PREFIX ."attachments (
+	    	                                      ts,
 	    																				ticketID,
 	    																				replyID,
 	    																				department,
 	    																				fileName,
 	    																				fileSize,
-	    																				addDate
 	    																			)
 	    																		VALUES (?,?,?,?,?,?)";
 					$values = array(
+	    										$replyDate,
 	    										$lastTicketID,
 	    										$lastReplyID,
 	    										$department,
 	    										$attachment['attachfile'],
 	    										$filesize,
-	    										$replyDate,
 	    									);
 
 	    		$stmt = $db->prepare($new_attachment);
@@ -157,31 +172,11 @@ catch(PDOException $e) {
   echo $e->getMessage();
 }
 
-function convertDepartment($department = 1) {
-	/* Assign Maian Support value to TDP key */
-  $departments_map = array(	12 => 11,
-  													13 => 12,
-  													14 => 6,
-  													15 => 9,
-  													16 => 2,
-  													17 => 7,
-  													18 => 10,
-  													19 => 0,
-  													20 => 1,
-  													21 => 13,
-  													22 => 8,
-  													23 => 4,
-  													24 => 3,
-  													25 => 5,
-  												);
-	return $departments_map[$department];
-}
-
 function getReplies($ticketID) {
 	try {
-  	$db = new PDO("mysql:dbname=DBNAME;host=HOST", "USER", "PASSWORD" );
+  	$db = new PDO("mysql:dbname=". DB .";host=". HOST, USER, PWD );
   
-		$sth = $db->prepare('SELECT name,comments,posttime,responsetime,postdate,adminreply FROM tdp_replies WHERE ticketid = :ticket');
+		$sth = $db->prepare('SELECT name,comments,posttime,responsetime,postdate,adminreply FROM '. TDP_PREFIX .'replies WHERE ticketid = :ticket');
 		$sth->execute(array(':ticket' => $ticketID));
 		$replies = $sth->fetchAll(PDO::FETCH_ASSOC);
 		/* Need to sort replies, since merged tickets may appear out of order. */
@@ -205,20 +200,27 @@ function getReplies($ticketID) {
 	return $replies;
 }
 
-function getFirstReply($replies, $key) {
-	return $key == 'timestamp' ? $replies[0]['timestamp'] : $replies[0]['message'];
-}
-
 function getLastReplyDate($replies) {
-	return isset($replies[count($replies)-1]['posttime']) ? 'admin' : 'visitor';
+	return isset($replies[count($replies)-1]['posttime']) ? $replies[count($replies)-1]['posttime'] : 0;
 }
 
 function getLastReplier($ticket) {
 	return $ticket['responder'] ? 'visitor' : 'admin';
 }
 
+/* Assign Maian Support value to TDP key.
+ * A real converter would have a GUI to map the departments. :)
+ */
+function convertDepartment($department = 1) {
+  $departments_map = array(	1 => 1,
+  												);
+	return $departments_map[$department];
+}
+
+/* Assign Maian Support value to TDP key.
+ * A real converter would have a GUI to map the ticket statuses. :)
+ */
 function convertPriority($priority = 2) {
-	/* Assign Maian Support value to TDP key */
   $priorities_map = array(	1 => 'low',
   													2 => 'medium',
   													3 => 'high',
@@ -226,8 +228,8 @@ function convertPriority($priority = 2) {
 	return $priorities_map[$priority];
 }
 
+/* Assign Maian Support value to TDP key. */
 function convertStatus($ticket) {
-	/* Assign Maian Support value to TDP key */
 	if ($ticket['status']) {
 	  return 'open';
 	}
@@ -241,12 +243,22 @@ function convertStatus($ticket) {
 	}
 }
 
+/* Assign Maian Support value to TDP key.
+ * TDP assigns tickets by name rather than by user ID.
+ * A real converter would have a GUI to map the users. :)
+ */
 function convertUser($user = 0) {
-	/* Assign Maian Support value to TDP key */
-	/* TDP assigns tickets by name rather than by user ID. */
 	$users_map = array(	
-											'Don Morris' => 1,
+											'Administrator' => 1,
 									);
 	return $users_map[$user];
+}
+
+/* Added this when I noticed that TDP encoded double quotes and MS doesn't.
+   This also should be backported to version 1.0. */
+function filter_comments($comments) {
+  // return html_entity_decode($comments);
+  // Nope, that does wacky stuff to diacriticals and such.
+  return str_replace('&quot;', '"', $comments);
 }
 ?>
