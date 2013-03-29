@@ -168,6 +168,47 @@ catch(PDOException $e) {
   echo $e->getMessage();
 }
 
+/*
+ * Convert TDP standard responses.
+ */
+try {
+	echo '<pre>';
+  $db = new PDO("mysql:dbname=". DB .";host=". HOST, USER, PWD, array(PDO::ATTR_ERRMODE => PDO::ERRMODE_WARNING) );
+
+  $sql = 'SELECT * FROM '. TDP_PREFIX .'responses ORDER BY ID';
+
+  foreach ($db->query($sql) as $response) {
+    $createdDate = strtotime($response['adddate']) + TIME_OFFSET;
+
+    $new_response = "INSERT INTO ". MS_PREFIX ."responses (
+                                            ts,
+                                            title,
+                                            answer,
+    																				department,
+    																				enResponse
+    																			)
+    																		VALUES (?,?,?,?,?)";
+
+    $values = array (
+    									$createdDate,
+    									stripslashes($response['question']),
+    									stripslashes($response['answer']),
+    									0,
+    									'yes',
+    								);
+
+    $stmt = $db->prepare($new_response);
+    $stmt->execute($values);
+    $lastResponseID = $db->lastInsertId();
+    echo 'Created standard response : ' . $response['question'] . "<br />";
+  }
+  echo '</pre>';
+}
+
+catch(PDOException $e) {
+  echo $e->getMessage();
+}
+
 function getReplies($ticketID) {
 	try {
   	$db = new PDO("mysql:dbname=". DB .";host=". HOST, USER, PWD );
