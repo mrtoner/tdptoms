@@ -13,6 +13,9 @@ define('TDP_ATTACH_PATH','/home/account/public_html/path/to/attachments/');
    Any offset must be in seconds */
 define('TIME_OFFSET', 0);
 
+/*
+ * Convert TDP tickets and replies.
+ */
 try {
 	echo '<pre>';
   $db = new PDO("mysql:dbname=". DB .";host=". HOST, USER, PWD, array(PDO::ATTR_ERRMODE => PDO::ERRMODE_WARNING) );
@@ -20,17 +23,13 @@ try {
   $sql = 'SELECT * FROM '. TDP_PREFIX .'tickets ORDER BY ID';
 
   $new_ticket = array();
-  /* Iterate over each TDP ticket */
   foreach ($db->query($sql) as $ticket) {
     $department = convertDepartment($ticket['deptid']);
     $replies = getReplies($ticket['ticketid']);
     $priority = convertPriority($ticket['priority']);
     $createdDate = strtotime($ticket['ticketdate']) + TIME_OFFSET;
-    //$ticketStamp = date(STAMP_DATE, $createdDate);
     $replyStatus = count($replies) ? getLastReplier($ticket) : 'start';
     $status = convertStatus($ticket['status']);
-    //$addDate = date('Y-m-d', $createdDate);
-    //$addTime = date('G:i:s', $createdDate);
     $lastUpdate = getLastReplyDate($replies) != 0 ? strtotime(getLastReplyDate($replies)) + TIME_OFFSET : $createdDate;
     $comments = stripslashes($ticket['comments']);
     $comments = filter_comments($comments);
@@ -83,9 +82,6 @@ try {
 
     foreach ($replies as $reply) {
       $repliedDate = strtotime($reply['posttime']) + TIME_OFFSET;
-    	//$replyDate = date('Y-m-d', $repliedDate);
-    	//$replyTime = date('G:i:s', $repliedDate);
-    	//$replyStamp = date(STAMP_DATE, $repliedDate);
     	/* TDP has a bug (among many) that marks replies as 'admin' when merged.
     	   This will attempt to  fix that by marking all merged replies as 'visitor'.
     	   However, I really should compare the name on the reply to the list of users
