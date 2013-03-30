@@ -169,6 +169,87 @@ catch(PDOException $e) {
 }
 
 /*
+ * Convert TDP knowledge base.
+ * In TDP, knowledge base articles were linked to departments, so for an upgrade
+ * we'll keep them the same and allow the administrator to manually change them.
+ */
+try {
+	echo '<pre>';
+  $db = new PDO("mysql:dbname=". DB .";host=". HOST, USER, PWD, array(PDO::ATTR_ERRMODE => PDO::ERRMODE_WARNING) );
+
+  $sql = 'SELECT * FROM '. TDP_PREFIX .'kbase ORDER BY ID';
+
+  $new_departments = array();
+  $old_departments = getDepartments();
+  foreach ($db->query($sql) as $article) {
+    $oldCategory = $article['department'];
+    $catName = $oldCategory != 0 ? $old_departments[$oldCategory] : '';
+    $pos = $oldCategory != 0 ? array_search($catName, $new_departments) : 0;
+    if ($pos === FALSE) {    
+
+      $new_category = "INSERT INTO ". MS_PREFIX ."categories (
+                                              name,
+                                              summary,
+                                              enCat,
+                                              orderBy,
+                                              subcat
+                                            ) 
+                                          VALUES (?,?,?,?,?)";
+
+      $values = array (
+                        $catName,
+                        '',
+                        'yes',
+                        0,
+                        0,
+                      );
+
+      $stmt = $db->prepare($new_category);
+      $stmt->execute($values);
+      $pos = $lastResponseID = $db->lastInsertId();
+      echo 'Created FAQ category : ' . $catName . "<br />";
+      
+      $new_departments[$lastResponseID] = $catName;
+    }
+    
+    $new_faq = "INSERT INTO ". MS_PREFIX ."faq (
+                                            ts,
+                                            question,
+                                            answer,
+    																				category,
+    																				kviews,
+    																				kuseful,
+    																				knotuseful,
+    																				enFaq,
+    																				orderBy
+    																			) 
+    																		VALUES (?,?,?,?,?,?,?,?,?)";
+
+    $values = array (
+    									$createdDate,
+    									stripslashes($article['question']),
+    									stripslashes($article['answer']),
+    									$pos,
+    									0,
+    									0,
+    									0,
+    									'yes',
+    									0,
+    								);
+
+    $stmt = $db->prepare($new_faq);
+    $stmt->execute($values);
+    $lastResponseID = $db->lastInsertId();
+    echo 'Created FAQ entry : ' . $article['question'] . "<br />";
+  }
+  echo '</pre>';
+}
+
+catch(PDOException $e) {
+  echo $e->getMessage();
+}
+
+/*
  * Convert TDP standard responses.
  */
 try {
@@ -207,6 +288,27 @@ try {
 
 catch(PDOException $e) {
   echo $e->getMessage();
+}
+
+function getDepartments() {
+  try {
+    $db = new PDO("mysql:dbname=". DB .";host=". HOST, USER, PWD, array(PDO::ATTR_ERRMODE => PDO::ERRMODE_WARNING) );
+
+    $sql = 'SELECT * FROM '. TDP_PREFIX .'departments ORDER BY ID';
+  
+    $departments = array();
+    $query = $db->query($sql);
+		$results = $query->fetchAll(PDO::FETCH_ASSOC);
+		foreach ($results as $dept) {
+		  $departments[$dept['id']] = $dept['name'];
+		}
+  }
+
+  catch(PDOException $e) {
+    echo $e->getMessage();
+  }
+
+  return $departments;
 }
 
 function getReplies($ticketID) {
