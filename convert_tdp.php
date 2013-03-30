@@ -211,7 +211,7 @@ catch(PDOException $e) {
 
 function getReplies($ticketID) {
 	try {
-  	$db = new PDO("mysql:dbname=". DB .";host=". HOST, USER, PWD );
+  	$db = new PDO("mysql:dbname=". DB .";host=". HOST, USER, PWD, array(PDO::ATTR_ERRMODE => PDO::ERRMODE_WARNING) );
   
 		$sth = $db->prepare('SELECT name,comments,posttime,responsetime,postdate,adminreply FROM '. TDP_PREFIX .'replies WHERE ticketid = :ticket');
 		$sth->execute(array(':ticket' => $ticketID));
